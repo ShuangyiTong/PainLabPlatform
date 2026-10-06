@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>PainLab Platform</title>
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval';" />
+    <link rel="stylesheet" href="frontend/css/index.css">
+    <script>window.$ = window.jQuery = require('jquery');</script>
+    <script src="frontend/js/jquery-resizable.js"></script>
+    <script src="node_modules/codemirror/lib/codemirror.js"></script>
+    <link rel="stylesheet" href="node_modules/codemirror/lib/codemirror.css">
+    <script src="node_modules/codemirror/mode/javascript/javascript.js"></script>
+    <script type="text/javascript" src="node_modules/underscore/underscore-min.js"></script>
+    <script type="text/javascript" src="node_modules/fili/dist/fili.min.js"></script>
+</head>
+<body>
+    <div class="title-bar">
+        <div class="app-title" role="button" title="Menu">
+            <!-- alt is empty on purpose: the name is already in the span
+                 beside it, so a label here would just be announced twice. -->
+            <img class="app-icon" src="assets/painlab-platform-icon.svg" alt="">
+            <span>PainLab Platform</span>
+        </div>
+        <nav class="view-tabs">
+            <div id="device-detail-button" onclick="switchTab('device-detail-button', 'device-detail-tab')" class="view-tab active-tab">
+                <i class="fas fa-project-diagram"></i>
+                <span>Device Detail</span>
+            </div>
+            <div id="script-button" onclick="switchTab('script-button', 'script-tab')" class="view-tab">
+                <i class="fas fa-file-code"></i>
+                <span>Script</span>
+            </div>
+            <div id="device-manage-button" onclick="switchTab('device-manage-button', 'device-manage-tab')" class="view-tab">
+                <i class="fas fa-microchip"></i>
+                <span>Device Manage</span>
+            </div>
+        </nav>
+        <!-- Empty, and deliberately so: everything else in this bar is a
+             click target, so this strip is what's left to grab the window
+             by. It sits at the end of the bar, right beside the OS window
+             buttons, where a native title bar's empty space would be. -->
+        <div class="title-bar-gutter"></div>
+    </div>
+    <div class="main-area">
+    <!-- Everything that used to sit directly in .main-area now lives in this
+         wrapper. .main-area became a row (workspace, then the utility panel on
+         the right edge); this carries the column stacking it used to do. -->
+    <div class="main-area-body">
+    <div class="tab-area">
+    <div id="device-detail-tab" class="panel-container">
+        <div id="device-select-panel" class="panel-left">
+
+        </div>
+
+        <div class="splitter">
+        </div>
+
+        <div class="panel-right">
+            <div id="detail-display">
+
+            </div>
+        </div>
+    </div>
+    <div id="script-tab" class="panel-container", style="display: none;">
+        <!-- Only the header is static; populateScriptList() in renderer.js
+             replaces #script-list alone, so the refresh button (and the icon
+             FontAwesome swaps in for it) is never rebuilt underneath it. -->
+        <div id="script-select-panel" class="panel-left">
+            <div class="panel-section-header">
+                <span>Select Scripts</span>
+                <button class="panel-refresh-button" onclick="refreshSavedScriptList()"
+                        title="Reload scripts from instance/saved_scripts"
+                        aria-label="Refresh script list">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+            </div>
+            <div id="script-list">
+            </div>
+        </div>
+
+        <div class="splitter">
+        </div>
+
+        <div class="panel-right">
+            <div class="panel-top">
+                <div id="script-actions">
+                    Activated Script: <div id="activated-script-name">None</div>
+                    <button id="activate-script" onclick="runUserScript()">Activate</button>
+                    <button id="save-script" onclick="saveUserScript()">Save</button>
+                </div>
+                <hr>
+                <div id="runtime-display-wrapper">
+                    Runtime Monitoring Panel
+                    <div id="runtime-display">
+                    </div>
+                </div>
+                <hr>
+                <div id="interact-display-wrapper">
+                    Interaction Panel
+                    <div id="interact-display">
+                    </div>
+                </div>
+                <hr>
+                <div id="script-display">
+
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="device-manage-tab" class="panel-container" style="display: none;">
+        <div id="program-select-panel" class="panel-left">
+
+        </div>
+
+        <div class="splitter">
+        </div>
+
+        <div class="panel-right">
+            <div class="panel-top">
+                <div id="running-program-wrapper">
+                    Running Programs
+                    <div id="running-program-display">
+                    </div>
+                </div>
+                <div id="stopped-program-wrapper">
+                    Stopped Programs
+                    <div id="stopped-program-display">
+                    </div>
+                </div>
+                <!-- Output for whichever program is selected above. Fetched only
+                     when the operator selects an entry or presses Refresh —
+                     nothing here polls, so a program printing flat out costs the
+                     renderer nothing until someone asks to look. -->
+                <div id="program-stdout-wrapper">
+                    <div class="program-stdout-header">
+                        <span>Program Output</span>
+                        <span id="program-stdout-subject"></span>
+                        <!-- Shown only while the wrapper carries .stdout-stale,
+                             i.e. the selected program exited after this view was
+                             last fetched. -->
+                        <span id="program-stdout-stale">out of date</span>
+                        <button class="panel-refresh-button" id="program-stdout-refresh"
+                                onclick="refreshProgramStdout()"
+                                title="Fetch the latest output for the selected program"
+                                aria-label="Refresh program output" disabled>
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                    <div id="program-stdout-meta"></div>
+                    <pre id="program-stdout-display"><span class="program-stdout-empty">Select a program above to read its output.</span></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+    </div>
+    <div class="splitter-horizontal">
+    </div>
+    <div class="panel-right-bottom">
+        <div class="log-header">Log Output</div>
+        <div id="log-output"></div>
+    </div>
+    </div>
+
+    <!-- Carries the .splitter class as well so it picks up the same line, hover
+         pill and cursor as the per-tab ones; .splitter-utility is what
+         jquery-resizable and panel-collapse.js key off. -->
+    <div class="splitter splitter-utility">
+    </div>
+
+    <div id="utility-panel" class="utility-panel-right">
+        <!-- #device-stats-panel is still empty: it will show per-device
+             connection statistics (outstanding controlDataQueue requests).
+
+             #action-panel's entries are built from instance/action_scripts at
+             window load by renderActionPanel() in renderer.js. Only the header
+             is static, and deliberately so — re-rendering replaces #action-list
+             alone, so the refresh button (and the icon FontAwesome swaps in for
+             it) is never rebuilt. -->
+        <div id="action-panel" class="utility-sub-panel">
+            <div class="panel-section-header">
+                <span>Actions</span>
+                <button class="panel-refresh-button" onclick="refreshActionScripts()"
+                        title="Reload scripts from instance/action_scripts"
+                        aria-label="Refresh action scripts">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+            </div>
+            <div id="action-list">
+            </div>
+        </div>
+
+        <!-- .splitter-horizontal for the look and feel it already defines;
+             .splitter-utility-h is the hook, and keeps this bar out of reach of
+             the log splitter's handle lookup. -->
+        <div class="splitter-horizontal splitter-utility-h">
+        </div>
+
+        <!-- Polled once a second from renderer.js rather than pushed with the
+             data frames: these are diagnostics, and recomputing them on every
+             frame would cost more than the numbers are worth. Header static for
+             the same reason as the others — only #device-stats-list is
+             re-rendered. -->
+        <div id="device-stats-panel" class="utility-sub-panel">
+            <div class="panel-section-header">
+                <span>Device Stats</span>
+            </div>
+            <div id="device-stats-list">
+            </div>
+        </div>
+    </div>
+    </div>
+</body>
+<script type="text/javascript" defer src="node_modules/@fortawesome/fontawesome-free/js/all.js"></script>
+<script src="frontend/js/view-controller.js"></script>
+<script src="frontend/js/chart-manager.js"></script>
+<!-- themes.js defines THEMES / GLASS_THEMES; must precede renderer.js,
+     which calls changeTheme() as soon as it loads. -->
+<script src="frontend/js/themes.js"></script>
+<script src="frontend/js/renderer.js"></script>
+<!-- Reads THEMES and calls changeTheme(), so it must follow both. -->
+<script src="frontend/js/app-menu.js"></script>
+<!-- Injects the splitter toggle buttons and defines PanelCollapse, whose hooks
+     the .resizable() calls below pass to jquery-resizable. -->
+<script src="frontend/js/panel-collapse.js"></script>
+<script>
+    /* The app-title menu itself lives in frontend/js/app-menu.js. */
+    (function () {
+        const { ipcRenderer } = require('electron');
+
+        /* ===== Keep the OS caption buttons as tall as the title bar =====
+           The title bar is page content, so zooming (Ctrl+Plus / Ctrl+Minus)
+           scales it — but the minimize/maximize/close buttons are drawn
+           natively by the OS and don't scale, so after a zoom they no longer
+           line up with the bar. Zooming resizes the CSS viewport, which fires
+           'resize', so that's where we re-measure the bar (CSS px) and convert
+           to the device px the overlay is specified in. */
+        const { webFrame } = require('electron');
+        const titleBar = document.querySelector('.title-bar');
+        let lastSentHeight = null;
+
+        function syncCaptionButtonHeight() {
+            if (!titleBar) return;
+            const height = Math.round(
+                titleBar.getBoundingClientRect().height * webFrame.getZoomFactor()
+            );
+            if (height === lastSentHeight) return;   // nothing changed
+            lastSentHeight = height;
+            ipcRenderer.send('sync-titlebar-height', height);
+        }
+
+        window.addEventListener('resize', syncCaptionButtonHeight);
+        syncCaptionButtonHeight();   // in case a zoom level carried over
+    })();
+</script>
+<script>
+    /* The onDrag hooks are where the panel minimums live now — they veto
+       sub-minimum drags and collapse the panel instead. See panel-collapse.js. */
+    $(".panel-left").resizable({
+        handleSelector: ".splitter",
+        resizeHeight: false,
+        onDrag: PanelCollapse.onWidthDrag
+    });
+
+    /* resizeWidthFrom 'left' because this panel sits on the far side of its
+       splitter: dragging the handle left has to make it wider, not narrower. */
+    $(".utility-panel-right").resizable({
+        handleSelector: ".splitter-utility",
+        resizeHeight: false,
+        resizeWidthFrom: "left",
+        onDrag: PanelCollapse.onWidthDrag
+    });
+
+    /* Inside the utility panel: #action-panel carries the dragged height and
+       #device-stats-panel absorbs the rest. Its hook only clamps the drag —
+       neither sub-panel collapses. */
+    $("#action-panel").resizable({
+        handleSelector: ".splitter-utility-h",
+        resizeWidth: false,
+        onDrag: PanelCollapse.onUtilitySplitDrag
+    });
+
+    $(".tab-area").resizable({
+        handleSelector: ".splitter-horizontal",
+        resizeWidth: false,
+        onDragStart: PanelCollapse.onLogDragStart,
+        onDrag: PanelCollapse.onLogDrag,
+        onDragEnd: PanelCollapse.onLogDragEnd
+    });
+
+    var codeMirrorEditor = CodeMirror(document.getElementById("script-display"), {
+        value: "",
+        mode:  "javascript"
+    });
+
+    codeMirrorEditor.setSize(null, 1200);
+
+    requestSavedScriptList();
+    listProgram();
+    /* The utility panel sits outside the tab strip, so its actions are loaded
+       and parsed once here rather than on a tab switch. */
+    requestActionScriptList();
+    startDeviceStatsPolling();
+
+    function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    // Keep a single instance of the audio context globally
+    var audioCtx = null;
+
+    function playInstantBeep(frequency = 440, durationMs = 200) {
+        // 1. Initialize the context ONCE on the very first beep
+        if (!audioCtx) {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+        }
+        
+        // 2. Resume if the browser put the audio hardware to sleep
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+
+        const startTime = audioCtx.currentTime;
+        const durationSec = durationMs / 1000;
+
+        // 3. Spawn a fresh, ultra-lightweight oscillator and gain node
+        const oscillator = audioCtx.createOscillator();
+
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(frequency, startTime);
+
+        // 4. Connect the chain: Oscillator -> Gain (Volume) -> Speakers
+        oscillator.connect(audioCtx.destination);
+
+        // 5. Schedule precise start and stop times
+        oscillator.start(startTime);
+        oscillator.stop(startTime + durationSec);
+    }
+
+    /* Non-blocking replacement for window.alert().
+       Builds a material-design modal, returns a Promise that resolves when
+       the user dismisses it (OK button, backdrop click, Enter, or Escape).
+       Because it awaits a user gesture instead of freezing the event loop,
+       the rest of the page keeps running (charts update, data keeps flowing).
+
+       okCallback (optional) runs only on confirmation — OK button or Enter.
+       Backdrop click / Escape dismiss without firing it, so it can carry
+       real actions (e.g. launching a program) and not just acknowledgement.
+
+       Alerts may overlap: each call builds its own overlay, and later ones
+       stack on top. asyncAlertStack keeps Enter/Escape routed to the
+       topmost alert only, instead of every open alert at once.
+
+       Usage:
+           asyncAlert("Trial complete!");          // fire and forget
+           await asyncAlert("Saved.");             // pause this async fn only
+           asyncAlert("Launch?", doLaunch);        // run doLaunch on OK
+    */
+    var asyncAlertStack = [];
+
+    function asyncAlert(message, okCallback) {
+        return new Promise((resolve) => {
+            // --- Build DOM ---
+            const overlay = document.createElement('div');
+            overlay.className = 'async-alert-overlay';
+
+            const modal = document.createElement('div');
+            modal.className = 'async-alert-modal';
+
+            const msg = document.createElement('div');
+            msg.className = 'async-alert-message';
+            msg.textContent = message;   // textContent => safe against HTML injection
+
+            const actions = document.createElement('div');
+            actions.className = 'async-alert-actions';
+
+            const okBtn = document.createElement('button');
+            okBtn.className = 'async-alert-ok';
+            okBtn.textContent = 'OK';
+
+            actions.appendChild(okBtn);
+            modal.appendChild(msg);
+            modal.appendChild(actions);
+            overlay.appendChild(modal);
+            document.body.appendChild(overlay);
+
+            // Trigger the enter transition one frame after insertion so the
+            // browser registers the start state before .visible is applied.
+            requestAnimationFrame(() => overlay.classList.add('visible'));
+            okBtn.focus();
+            asyncAlertStack.push(overlay);
+
+            // --- Teardown (guarded so it only runs once) ---
+            // confirmed=true (OK button / Enter) fires okCallback; backdrop
+            // click and Escape dismiss without it.
+            let settled = false;
+            function close(confirmed) {
+                if (settled) return;
+                settled = true;
+
+                document.removeEventListener('keydown', onKey);
+                asyncAlertStack.splice(asyncAlertStack.indexOf(overlay), 1);
+                overlay.classList.remove('visible');   // play exit transition
+
+                // Guarded: both transitionend and the setTimeout fallback can
+                // fire, but okCallback/resolve must only run once.
+                let removed = false;
+                const remove = () => {
+                    if (removed) return;
+                    removed = true;
+                    if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                    if (confirmed && okCallback) okCallback();
+                    resolve();
+                };
+                // Remove after the fade-out; setTimeout fallback in case
+                // transitionend doesn't fire (e.g. reduced-motion settings).
+                overlay.addEventListener('transitionend', remove, { once: true });
+                setTimeout(remove, 250);
+            }
+
+            function onKey(e) {
+                // Only the topmost alert answers the keyboard
+                if (asyncAlertStack[asyncAlertStack.length - 1] !== overlay) return;
+                if (e.key === 'Escape' || e.key === 'Enter') {
+                    e.preventDefault();
+                    close(e.key === 'Enter');
+                }
+            }
+
+            okBtn.addEventListener('click', () => close(true));
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) close(false);   // click outside the modal card
+            });
+            document.addEventListener('keydown', onKey);
+        });
+    }
+</script>
+</html>

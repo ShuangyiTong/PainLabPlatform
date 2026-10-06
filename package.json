@@ -1,0 +1,31 @@
+{
+  "name": "pain-research-platform",
+  "version": "1.0.0",
+  "description": "Control Panel App for Experiments in Pain Lab",
+  "main": "main.js",
+  "scripts": {
+    "test": "node tests/recording.test.js",
+    "session": "node tools/session.js",
+    "start": "electron .",
+    "debug": "electron . --debug"
+  },
+  "keywords": [],
+  "author": "Shuangyi Tong <shuangyi.tong@ndcn.ox.ac.uk>",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^30.5.1"
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-free": "^5.15.3",
+    "async-mutex": "^0.3.1",
+    "bcijs": "^1.8.0",
+    "bean": "^1.0.15",
+    "codemirror": "^5.61.0",
+    "fft-js": "0.0.12",
+    "fili": "^2.0.3",
+    "flotr2": "^0.1.0",
+    "fs-extra": "^10.0.1",
+    "jquery": "^3.6.0",
+    "underscore": "^1.13.1"
+  }
+}

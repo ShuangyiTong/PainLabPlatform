@@ -1,0 +1,2233 @@
+/*
+Shuangyi Tong <shuangyi.tong@eng.ox.ac.uk>
+created on 20 May, 2026
+
+Replacing original one for a complete UI overhaul
+*/
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* ===== Design Tokens ===== */
+:root {
+    /* -- Interactive accent (tabs, focus rings, scrollbar, selection) -- */
+    --accent:            rgb(223, 147, 148);
+    --accent-hover:      rgb(207, 125, 126);
+    --accent-light:      rgba(223, 147, 148, 0.10);
+    --accent-border:     rgba(223, 147, 148, 0.50);
+
+    /* -- Primary button (Activate) -- */
+    --btn-primary:       rgb(192, 132, 115);
+    --btn-primary-hover: rgb(170, 112, 95);
+
+    /* -- Per-region panel tints (transparent colour washes) -- */
+    --tint-sidebar:      rgba(192, 165, 148, 0.08);
+    --tint-entry:        rgba(223, 147, 148, 0.05);
+    --tint-detail:       rgba(186, 148, 170, 0.06);
+    --tint-actions:      rgba(200, 165, 145, 0.07);
+    --tint-monitor:      rgba(155, 140, 180, 0.06);
+    --tint-interact:     rgba(145, 178, 148, 0.06);
+
+    /* -- View tabs in the title bar (one hue each, see themes.js) --
+       Stronger than the panel tints above: they have to make each tab read
+       as its own block so the drag strip beside the window buttons is
+       recognisably empty. */
+    --tint-tab-1:        rgba(223, 147, 148, 0.16);
+    --tint-tab-2:        rgba(155, 140, 180, 0.16);
+    --tint-tab-3:        rgba(145, 178, 148, 0.16);
+
+    /* -- Generic accent tints (buttons, shadows) -- */
+    --panel-tint:        rgba(223, 147, 148, 0.06);
+    --panel-tint-strong: rgba(223, 147, 148, 0.12);
+    --shadow-focus:      0 0 0 3px rgba(223, 147, 148, 0.25);
+
+    /* -- Structural (not themed) -- */
+    --bg-app:            #F2F2F4;
+    --bg-panel:          #FFFFFF;
+    --bg-sidebar:        #FAFAFA;
+    --bg-row-hover:      rgba(0, 0, 0, 0.025);
+
+    --border:            #E2E2E7;
+    --border-strong:     #C7C7CC;
+
+    --text-primary:      #1C1C1E;
+    --text-secondary:    #4A4A4F;
+    --text-muted:        #8A8A8F;
+
+    --status-ok:         #28A745;
+    --status-err:        #DC3545;
+
+    --radius:            8px;
+    --radius-sm:         5px;
+
+    --shadow-card:       0 1px 4px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04);
+
+    --font-sans: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Cascadia Code', 'SF Mono', 'Menlo', 'Consolas', monospace;
+}
+
+/* ===== Reset ===== */
+* {
+    box-sizing: border-box;
+}
+
+/* ===== Material-style Scrollbars (Chromium/Electron) ===== */
+
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.18);
+    border-radius: 6px;
+    transition: background 0.2s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-border);
+}
+
+::-webkit-scrollbar-thumb:active {
+    background: var(--accent);
+}
+
+::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+html {
+    font-family: var(--font-sans);
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    position: absolute;
+    top: 0; left: 0; bottom: 0; right: 0;
+    height: 100%; width: 100%;
+    background: none;
+}
+
+body {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-app);
+    top: 0; left: 0; bottom: 0; right: 0;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+/* ===== Custom Title Bar (hosts the app menu + view tabs — see index.html) =====
+   The native title bar is hidden (main.js: titleBarStyle 'hidden'); this
+   bar replaces it. The whole bar is a drag handle for the window; the menu
+   buttons and view tabs opt out so they stay clickable. The OS
+   minimize/maximize/close buttons are drawn by titleBarOverlay over the far
+   right of this bar.
+
+   width/padding-left come from the Window Controls Overlay env() vars, which
+   report the area actually left over for us: on Windows that trims the width
+   by the caption buttons on the right, on macOS it shifts content past the
+   traffic lights on the left. Without this the view tabs would run underneath
+   the caption buttons. Fallbacks cover the usual 3-button strip if the vars
+   are unavailable. */
+
+.title-bar {
+    flex: 0 0 40px;
+    height: 40px;
+    width: env(titlebar-area-width, calc(100% - 140px));
+    display: flex;
+    align-items: stretch;
+    padding-left: calc(env(titlebar-area-x, 0px) + 10px);
+    background: linear-gradient(var(--tint-sidebar), var(--tint-sidebar)), var(--bg-sidebar);
+    border-bottom: 1px solid var(--border);
+    user-select: none;
+    z-index: 30;
+    -webkit-app-region: drag;
+}
+
+/* The app title is the menu trigger: clicking it pops up the native menu
+   (see index.html). It therefore has to opt out of the drag region, which
+   is why .title-bar-gutter below exists to take over window dragging. */
+.app-title {
+    -webkit-app-region: no-drag;   /* clickable, not a window drag handle */
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 14px;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+}
+
+.app-title:hover,
+.app-title.app-title-open {
+    background: var(--accent-light);
+    color: var(--accent-hover);
+}
+
+.app-title.app-title-open {
+    background: var(--panel-tint-strong);
+}
+
+.app-title i,
+.app-title svg.svg-inline--fa {
+    color: var(--accent);
+    font-size: 14px;
+    width: 16px;
+    transition: color 0.15s;
+}
+
+/* The brand mark, in place of the Font Awesome glyph that used to sit here.
+   Deliberately exempt from the accent recolouring above: it carries its own
+   palette and its own dark tile, and it should read as the same mark in every
+   theme. Slightly larger than the 16px glyph box because the artwork is inset
+   inside a rounded tile, so it reads smaller than its measured size.
+   Kept as SVG rather than the rasterised PNG — this one is drawn by the
+   renderer, so it stays sharp through Ctrl+Plus zoom and on HiDPI. */
+.app-title img.app-icon {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    display: block;
+}
+
+/* Reserved drag space, last in the bar so it lands directly beside the OS
+   window buttons (and at the far right of the bar on platforms that put
+   those buttons on the left). The app title and the view tabs are both
+   click targets, so without this strip there would be nowhere left to grab
+   the window. It inherits `drag` from .title-bar and stays deliberately
+   untinted, so it reads as empty next to the coloured tabs. */
+.title-bar-gutter {
+    flex: 0 0 144px;
+    background-color: white;
+}
+
+/* ===== View tabs (were the left sidebar) =====
+   The three view switchers live in the title bar now. The strip takes all
+   the width left after the app title and the drag gutter, and the tabs
+   share it evenly (flex-basis 0 + equal grow => equal widths regardless of
+   label length). */
+
+.view-tabs {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: stretch;
+    min-width: 0;
+}
+
+/* Each tab carries its own hue from the palette. The colour goes into a
+   --tab-tint variable rather than straight into `background`, so the hover
+   and active rules below can layer their own wash on top of whichever tint
+   the tab happens to have — one pair of rules instead of one per tab. */
+.view-tab:nth-child(1) { --tab-tint: var(--tint-tab-1); }
+.view-tab:nth-child(2) { --tab-tint: var(--tint-tab-2); }
+.view-tab:nth-child(3) { --tab-tint: var(--tint-tab-3); }
+
+.view-tab {
+    -webkit-app-region: no-drag;   /* clickable, not a window drag handle */
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 10px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    background: var(--tab-tint, transparent);
+    color: var(--text-muted);
+    font-size: 12.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.view-tab span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.view-tab:hover:not(.active-tab) {
+    background:
+        linear-gradient(rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.05)),
+        var(--tab-tint, transparent);
+    color: var(--text-secondary);
+}
+
+.view-tab.active-tab {
+    cursor: default;
+    background:
+        linear-gradient(var(--accent-light), var(--accent-light)),
+        var(--tab-tint, transparent);
+    border-bottom-color: var(--accent);
+    color: var(--accent-hover);
+}
+
+.view-tab svg.svg-inline--fa {
+    flex: 0 0 auto;
+    color: var(--text-muted);
+    width: 16px;
+    height: 16px;
+    transition: color 0.15s;
+}
+
+.view-tab.active-tab svg.svg-inline--fa {
+    color: var(--accent);
+}
+
+/* ===== Main content area (everything below the title bar) ===== */
+
+/* Direct child of the column-flex body now (the sidebar wrapper is gone), so
+   it takes all the height under the title bar. Lays its children out in a row
+   since the utility panel arrived — the workspace stack, then that panel down
+   the right-hand edge. min-height: 0 lets its own children scroll instead of
+   forcing the body taller. */
+.main-area {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: row;
+    overflow: hidden;
+}
+
+/* The tab area, its horizontal splitter and the log panel — everything that is
+   not the utility panel. This is the column stack .main-area used to be
+   itself, which is why the log-collapse classes key off this element. */
+.main-area-body {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Right-most panel, running the full height under the title bar. Mirrors
+   .panel-left — fixed width with a splitter beside it — just anchored to the
+   other edge, and with no min-width for the same reason (see the note there).
+   Stacks its two sub-panels in a column; each of those scrolls on its own, so
+   this one only clips. */
+.utility-panel-right {
+    flex: 0 0 auto;
+    width: 250px;
+    max-width: 80%;
+    padding: 12px 10px;
+    background: var(--bg-panel);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* ===== Utility panel sub-panels ===== */
+
+/* #action-panel over #device-stats-panel, split by .splitter-utility-h. Same
+   arrangement as .tab-area over the log panel: the top one carries the height
+   the drag writes inline, the bottom one soaks up what is left. Neither
+   collapses, and their minimums live in panel-collapse.js like every other
+   panel's — see the note on .panel-left.
+
+   Flat regions rather than cards: no border, radius, shadow or padding of
+   their own, so content runs to the edge of the panel and only .utility-panel-
+   right's own padding insets it. No background either — .utility-panel-right's
+   shows through both, and the splitter's hairline is what separates them, the
+   same way .tab-area and the log panel are separated. */
+.utility-sub-panel {
+    overflow-y: auto;
+}
+
+/* A column of its own: fixed header, scrolling list. The id is what lets the
+   overflow beat .utility-sub-panel's overflow-y — otherwise the header would
+   scroll away with the entries. */
+#action-panel {
+    flex: 0 0 auto;
+    height: 70%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* ===== Panel section header =====
+   Shared by the panels whose contents are re-rendered from a directory listing
+   (#action-panel and #script-select-panel): a fixed label with a refresh button
+   pushed to the far end, sitting above the part that scrolls. Same section
+   label as .log-header and the program wrappers. */
+.panel-section-header {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
+}
+
+/* Icon-sized: the shared button rule is cut for labelled buttons, so its
+   padding and the left margin that spaces those apart both come back off. */
+.panel-refresh-button {
+    margin-left: 0;
+    padding: 3px 7px;
+    font-size: 11px;
+    line-height: 1;
+    color: var(--text-secondary);
+}
+
+/* min-height: 0 so the list scrolls inside the panel instead of stretching it
+   past the height the splitter drag set.
+
+   The horizontal padding is for the same reason as #script-list's: the full-
+   width parameter boxes would otherwise have --shadow-focus's 3px ring clipped
+   down both sides by the scroll container. .action-entry gives up its own 2px
+   in exchange, so the entries only move in by 2px overall. */
+#action-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 4px;
+}
+
+/* min-height: 0 so it can shrink past its own content instead of pushing the
+   panel taller — it scrolls rather than growing. Column for the same reason as
+   #action-panel: the header stays put while the entries scroll. */
+#device-stats-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Padding for the same reason as #action-list's — this is the scroll container,
+   so it clips at its content edge. */
+#device-stats-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 4px;
+}
+
+/* ===== Device stats entries =====
+   One block per device that has ever registered. Flat, like the action entries
+   above them. */
+.device-stat-entry {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.device-stat-entry:last-child {
+    border-bottom: none;
+}
+
+/* A device that has gone away keeps its last totals on screen, dimmed, rather
+   than dropping out of the panel. */
+.device-stat-offline {
+    opacity: 0.55;
+}
+
+.device-stat-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.device-stat-name {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow-wrap: anywhere;
+}
+
+.device-stat-status {
+    flex: 0 0 auto;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.device-stat-connected    { color: var(--status-ok); }
+.device-stat-disconnected { color: var(--status-err); }
+
+.device-stat-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    padding: 1px 0;
+}
+
+/* Both of these are toggled by class rather than by jQuery .show()/.hide():
+   those write an inline display, and on a .device-stat-row that means block
+   replacing the flex the row is laid out with. */
+
+/* Shown only for devices that declared support_rt_ping. */
+.device-stat-ping-row {
+    display: none;
+}
+
+.device-stat-ping-row.is-active {
+    display: flex;
+}
+
+/* Three children rather than two, so the value is pushed over to sit with the
+   spinner instead of being spaced out midway across the row. */
+.device-stat-ping-row .device-stat-value {
+    margin-left: auto;
+}
+
+/* Waiting on an echo. Red, small, and spinning — it means the round trip is
+   outstanding, not that anything has failed, so it stays quiet at the end of
+   the row rather than colouring the whole entry. */
+.device-stat-spinner {
+    display: none;
+    flex: 0 0 auto;
+    width: 9px;
+    height: 9px;
+    border: 2px solid var(--status-err);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: device-stat-spin 0.8s linear infinite;
+}
+
+.device-stat-spinner.is-active {
+    display: block;
+}
+
+@keyframes device-stat-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Monospace so the figures do not shuffle sideways as they change each second. */
+.device-stat-value {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--text-primary);
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+/* ===== Action panel entries =====
+   One entry per action script parsed out of instance/action_scripts: its
+   parameter boxes stacked over the button that runs it. Flat like the
+   sub-panel holding them — a hairline between entries rather than a card
+   each, since vertical space is what is short in this panel. */
+.action-entry {
+    padding: 10px 0 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.action-entry:last-child {
+    border-bottom: none;
+}
+
+.action-param {
+    margin-bottom: 8px;
+}
+
+.action-param label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.action-param-required {
+    color: var(--status-err);
+    margin-left: 2px;
+}
+
+/* Boxes and button both run the panel's full width: it is far too narrow to
+   sit a label beside its input, let alone two controls on one row. */
+.action-param input[type="text"] {
+    width: 100%;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    padding: 5px 8px;
+}
+
+.action-run-button {
+    width: 100%;
+    margin-left: 0;
+}
+
+/* Stands in for the entries when a listing comes back empty. white-space is
+   reset because .panel-left sets nowrap for its entries, which would run this
+   sentence off the side of the script panel. */
+.panel-empty-message {
+    padding: 10px 2px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-muted);
+    white-space: normal;
+}
+
+/* The path in the empty-state message. overflow-wrap because these panels are
+   narrow enough that instance/action_scripts can be the widest thing in them. */
+.panel-empty-message code {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+}
+
+/* Holds the active tab. Its height is the drag target for the shared
+   .splitter-horizontal below it, so it stays flex: 0 0 auto with an explicit
+   height — jquery-resizable writes the dragged height inline onto this element,
+   and .panel-right-bottom (flex: 1) soaks up the remaining space. */
+.tab-area {
+    flex: 0 0 auto;
+    height: 600px;
+    min-height: 100px;
+    overflow: hidden;
+}
+
+/* ===== Panel Container ===== */
+
+.panel-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
+/* No min-width here on purpose: the collapse feature needs to drive this box
+   to a genuine zero, and a CSS minimum would clamp it no matter what width the
+   splitter drag writes inline. The minimum now lives in panel-collapse.js,
+   which vetoes sub-minimum drags and snaps the panel shut instead. */
+.panel-left {
+    flex: 0 0 auto;
+    padding: 12px 10px;
+    width: 250px;
+    max-width: 80%;
+    min-height: 200px;
+    background: var(--bg-panel);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    white-space: nowrap;
+}
+
+/* The one .panel-left with a header: it becomes a column so "Select Scripts"
+   and its refresh button stay put while the entries scroll under them. The id
+   is what lets the overflow beat .panel-left's own overflow-y — otherwise the
+   header would scroll away with the list. Collapsing still works: the width
+   and padding of .panel-left.collapsed are untouched here, and this rule's
+   overflow is hidden either way. */
+#script-select-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    /* Most of .panel-left's inset moves inside #script-list below — what is
+       left here is just the gap between the panel edge and the header rule. */
+    padding: 8px 4px;
+}
+
+/* Keeps the header label on the same left edge as the entries below it, since
+   the entries carry #script-list's padding as well as the panel's. */
+#script-select-panel .panel-section-header {
+    padding-left: 6px;
+    padding-right: 6px;
+}
+
+/* min-height: 0 so the list scrolls inside the panel rather than stretching it
+   past the height it has been given.
+
+   The padding is what the entries actually need: this is the scroll container,
+   and a scroll container clips at its content edge, so a .device-entry sitting
+   flush against it loses the outer 1px of --shadow-card and all of its blur
+   down both sides. 4px (panel) + 6px (here) puts the cards on the same 10px
+   inset .panel-left gave them before, with the room now on the inside where
+   the shadow can render. */
+#script-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 6px;
+}
+
+/* ===== Modern Material-style Splitter ===== */
+
+.splitter {
+    flex: 0 0 auto;
+    width: 10px;                /* generous hit area */
+    background: transparent;
+    min-height: 200px;
+    cursor: col-resize;
+    position: relative;
+    user-select: none;
+}
+
+.splitter::before {
+    /* Thin line that runs the full height */
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 1px;
+    background: var(--border);
+    transition: background 0.2s ease, width 0.2s ease;
+}
+
+.splitter::after {
+    /* Drag handle pill that appears on hover */
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 4px;
+    height: 40px;
+    background: var(--border-strong);
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.2s ease, background 0.2s ease, height 0.2s ease;
+}
+
+.splitter:hover::before {
+    background: var(--accent-border);
+}
+
+.splitter:hover::after {
+    opacity: 1;
+    background: var(--accent);
+    height: 56px;
+}
+
+.splitter:active::after {
+    background: var(--accent-hover);
+}
+
+.panel-right {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    padding: 16px 18px;
+    width: 100%;
+    min-height: 200px;
+    min-width: 200px;
+    background: var(--bg-app);
+    overflow: hidden;
+}
+
+/* ===== Vertical split (script tab: top / bottom) ===== */
+
+/* Script content fills the tab area now; the shared .splitter-horizontal resizes
+   .tab-area, not this. Scrolls when the editor is taller than the available area. */
+.panel-top {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.splitter-horizontal {
+    flex: 0 0 auto;
+    height: 10px;
+    background: transparent;
+    cursor: row-resize;
+    position: relative;
+    user-select: none;
+}
+
+.splitter-horizontal::before {
+    content: "";
+    position: absolute;
+    left: 0; right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 1px;
+    background: var(--border);
+    transition: background 0.2s ease;
+}
+
+.splitter-horizontal::after {
+    content: "";
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    height: 4px;
+    width: 40px;
+    background: var(--border-strong);
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.2s ease, background 0.2s ease, width 0.2s ease;
+}
+
+.splitter-horizontal:hover::before { background: var(--accent-border); }
+.splitter-horizontal:hover::after  { opacity: 1; background: var(--accent); width: 56px; }
+.splitter-horizontal:active::after { background: var(--accent-hover); }
+
+/* Shared log panel — a child of .main-area-body (below the tab area), so it
+   spans the full width under whichever tab is active. min-height lives in
+   panel-collapse.js for the same reason .panel-left has no min-width — see the
+   note there. And note this panel is not the element the splitter drags:
+   .tab-area above is, and this one absorbs what is left.
+
+   Full-bleed rather than an inset card: no margin, border, radius or shadow, so
+   the log runs to the window edges and .log-header / .log-line supply the only
+   inset. The splitter above it is what separates it from the tab area. */
+.panel-right-bottom {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg-panel);
+}
+
+.log-header {
+    flex: 0 0 auto;
+    padding: 8px 14px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(var(--tint-sidebar), var(--tint-sidebar)), var(--bg-sidebar);
+}
+
+#log-output {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 2px 0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.55;
+}
+
+.log-line {
+    display: flex;
+    gap: 12px;
+    padding: 2px 14px;
+}
+
+.log-line:nth-child(even) {
+    background: rgba(0, 0, 0, 0.018);
+}
+
+.log-line:hover {
+    background: var(--bg-row-hover);
+}
+
+.log-ts {
+    flex: 0 0 auto;
+    color: var(--text-muted);
+    white-space: nowrap;
+    user-select: all;
+}
+
+.log-msg {
+    flex: 1 1 auto;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* ===== Device / Script Entries (left panel) ===== */
+
+.device-entry {
+    background: linear-gradient(var(--tint-entry), var(--tint-entry)), var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 8px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+    box-shadow: var(--shadow-card);
+    white-space: normal;
+    overflow-wrap: anywhere; /* long unbroken names (e.g. executables) wrap instead of overflowing */
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.device-entry:hover {
+    border-color: var(--accent-border);
+    box-shadow: 0 2px 10px var(--panel-tint-strong), 0 0 0 1px var(--accent-border);
+}
+
+.device-select-entry {
+    background: linear-gradient(var(--accent-light), var(--accent-light)), var(--bg-panel);
+    border-color: var(--accent-border) !important;
+}
+
+/* ===== Detail Panel ===== */
+
+#detail-display {
+    margin: 0;
+    width: 100%;
+    flex: 1 1 auto;
+    overflow-y: auto;
+}
+
+[id^="device"][id$="-detail"] {
+    background: linear-gradient(var(--tint-detail), var(--tint-detail)), var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow-card);
+}
+
+/* ===== Typography ===== */
+
+p {
+    word-break: break-word;
+    white-space: normal;
+    margin: 0.6em 0 0.3em;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+/* Device entry p tags should stay regular */
+.device-entry p {
+    text-transform: none;
+    letter-spacing: normal;
+    font-size: 13px;
+    font-weight: 500;
+    margin: 2px 0;
+    color: var(--text-secondary);
+}
+
+/* ===== Form Controls ===== */
+
+input[type="text"] {
+    font-family: var(--font-sans);
+    font-size: 13.5px;
+    font-weight: 500;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    background: var(--bg-panel);
+    color: var(--text-primary);
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    width: 130px;
+    vertical-align: middle;
+}
+
+input[type="text"]:focus {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-focus);
+}
+
+input[type="range"] {
+    font-family: var(--font-sans);
+    accent-color: var(--accent);
+    vertical-align: middle;
+    cursor: pointer;
+}
+
+input[type="submit"],
+button {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 14px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong);
+    background: var(--bg-panel);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+input[type="submit"]:hover,
+button:hover {
+    background: var(--accent-light);
+    border-color: var(--accent-border);
+    color: var(--accent-hover);
+}
+
+input[type="submit"]:active,
+button:active {
+    background: var(--panel-tint-strong);
+}
+
+/* ===== Toggle Switch ===== */
+
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 26px;
+    vertical-align: middle;
+    margin-left: 4px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--border-strong);
+    transition: background 0.25s;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 20px;
+    width: 20px;
+    left: 3px;
+    bottom: 3px;
+    background: white;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+    transition: transform 0.25s;
+}
+
+input:checked + .slider {
+    background: var(--accent);
+}
+
+input:focus + .slider {
+    box-shadow: var(--shadow-focus);
+}
+
+input:checked + .slider:before {
+    transform: translateX(18px);
+}
+
+.slider.round           { border-radius: 26px; }
+.slider.round:before    { border-radius: 50%; }
+
+/* ===== Charts ===== */
+
+/* Wrapper holds the WebGL canvas (driven by the chart worker) plus the static
+   y-axis labels. The canvas backing store is sized by the worker; CSS only
+   controls the on-screen box. */
+.line-chart {
+    position: relative;
+    height: 120px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    margin: 8px 0 14px;
+    border: 1px solid var(--border);
+    background: var(--bg-panel);
+}
+
+/* Faint mid-line so amplitude is readable without a full axis. */
+.line-chart::before {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; top: 50%;
+    height: 1px;
+    background: var(--border);
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.line-chart-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.line-chart-label {
+    position: absolute;
+    left: 6px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.55);
+    padding: 0 3px;
+    border-radius: 3px;
+    pointer-events: none;
+}
+
+.line-chart-ymax { top: 4px; }
+.line-chart-ymin { bottom: 4px; }
+
+/* ===== Script Tab — header bar ===== */
+
+#script-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    background: linear-gradient(var(--tint-actions), var(--tint-actions)), var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 14px;
+    box-shadow: var(--shadow-card);
+    font-size: 13.5px;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+#activated-script-name {
+    display: inline-block;
+    font-weight: 600;
+    color: var(--text-primary);
+    background: var(--accent-light);
+    border: 1px solid var(--accent-border);
+    border-radius: var(--radius-sm);
+    padding: 3px 12px;
+    min-width: 60px;
+    font-size: 13px;
+}
+
+#activate-script {
+    background: var(--btn-primary);
+    border-color: var(--btn-primary);
+    color: white;
+    margin-left: 0;
+}
+
+#activate-script:hover {
+    background: var(--btn-primary-hover);
+    border-color: var(--btn-primary-hover);
+    color: white;
+}
+
+#save-script {
+    margin-left: 0;
+}
+
+hr {
+    border: none;
+    display: none; /* sections separated by card spacing instead */
+}
+
+/* ===== Runtime & Interaction Panels ===== */
+
+/* Shared wrapper style */
+#runtime-display-wrapper,
+#interact-display-wrapper {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+    margin-bottom: 14px;
+    box-shadow: var(--shadow-card);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+/* Distinct tints per panel */
+#runtime-display-wrapper {
+    background: linear-gradient(var(--tint-monitor), var(--tint-monitor)), var(--bg-panel);
+}
+
+#interact-display-wrapper {
+    background: linear-gradient(var(--tint-interact), var(--tint-interact)), var(--bg-panel);
+}
+
+#runtime-display,
+#interact-display {
+    margin-top: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--text-primary);
+    border-top: 1px solid var(--border);
+}
+
+/* ---- Reactive grid layout for both panels ----
+   We switched from `flex-wrap` to CSS Grid because flex rows are
+   independent — each row distributes its own growth, so items in
+   different rows end up at different x-positions even when they should
+   visually align. Grid creates uniform column tracks shared across every
+   row, so every cell in column N has the same width regardless of row.
+
+   `auto-fit, minmax(MIN, 1fr)` keeps the layout reactive: the browser
+   fits as many ~MIN-wide columns as the container width allows, and the
+   `1fr` part splits leftover space equally so cells fill the row.       */
+
+#runtime-display {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    column-gap: 20px;
+}
+
+/* Inner grid lays out each pair as label | value */
+#runtime-display > div {
+    display: grid;
+    grid-template-columns: minmax(120px, auto) minmax(60px, 1fr);
+    align-items: center;
+    column-gap: 14px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 14px;
+    transition: background 0.12s;
+    min-width: 0;  /* allow long content to truncate rather than blow out cell */
+}
+
+#runtime-display > div:last-child {
+    border-bottom: none;
+}
+
+#runtime-display > div:hover {
+    background: var(--bg-row-hover);
+}
+
+#runtime-display span[id^="__runtime_display__"] {
+    color: var(--text-primary);
+    font-weight: 600;
+    font-family: var(--font-mono);
+    font-size: 13.5px;
+}
+
+#runtime-display span[id^="__runtime_display__"]:empty::before {
+    content: "—";
+    color: var(--text-muted);
+    font-family: var(--font-sans);
+    font-weight: 500;
+}
+
+/* Interaction panel uses a wider min-cell (~360px) because each pair
+   carries three children (label, text input, submit button) instead of
+   two. Inner flex packs them at natural widths with consistent gaps. */
+#interact-display {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    column-gap: 20px;
+}
+
+#interact-display > div {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 14px;
+    transition: background 0.12s;
+    min-width: 0;
+}
+
+#interact-display > div:last-child {
+    border-bottom: none;
+}
+
+#interact-display > div:hover {
+    background: var(--bg-row-hover);
+}
+
+#interact-display input[type="text"] {
+    flex: 1 1 100px;
+    min-width: 80px;
+    max-width: 240px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+}
+
+#interact-display input[type="submit"] {
+    margin-left: 0;
+    flex: 0 0 auto;
+}
+
+/* ===== Interactive button state cues =====
+   Applied at runtime by experiment scripts via setInteractiveButtonState() in
+   renderer.js to signal the next expected action. !important so they override the
+   base and themed (.glass) input[type="submit"] rules, including :hover. */
+input[type="submit"].interact-btn-go {        /* green: the next expected action (highlighted) */
+    background: var(--status-ok) !important;
+    border-color: #1E7E34 !important;
+    color: #FFFFFF !important;
+    box-shadow: 0 0 0 3px rgba(40, 167, 69, 0.30) !important;
+}
+input[type="submit"].interact-btn-go:hover {
+    background: #218838 !important;
+    color: #FFFFFF !important;
+}
+
+input[type="submit"].interact-btn-armed {     /* yellow: live but secondary (e.g. Start/Reset while running) */
+    background: #E0A800 !important;
+    border-color: #B88600 !important;
+    color: #1C1C1E !important;
+    box-shadow: none !important;
+}
+input[type="submit"].interact-btn-armed:hover {
+    background: #C6920A !important;
+    color: #1C1C1E !important;
+}
+
+input[type="submit"].interact-btn-abort {     /* red: abort / emergency stop */
+    background: var(--status-err) !important;
+    border-color: #B02A37 !important;
+    color: #FFFFFF !important;
+    box-shadow: none !important;
+}
+input[type="submit"].interact-btn-abort:hover {
+    background: #C82333 !important;
+    color: #FFFFFF !important;
+}
+
+input[type="submit"].interact-btn-idle {      /* grey: not currently actionable */
+    background: var(--bg-app) !important;
+    border-color: var(--border) !important;
+    color: var(--text-muted) !important;
+    box-shadow: none !important;
+    opacity: 0.7;
+}
+input[type="submit"].interact-btn-idle:hover {
+    background: var(--bg-app) !important;
+    border-color: var(--border) !important;
+    color: var(--text-muted) !important;
+}
+
+/* ===== Local Program Management (device-manage tab) ===== */
+
+/* Program entries: name + Start button. The card itself is not clickable —
+   only the button launches, so use the default cursor. */
+.program-entry {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    cursor: default;
+}
+
+.program-entry-name {
+    min-width: 0; /* let the name shrink and wrap instead of pushing the button out */
+}
+
+/* Start launches a program — same primary treatment as the Activate button */
+.program-entry button {
+    flex: 0 0 auto;
+    margin-left: 0;
+    background: var(--btn-primary);
+    border-color: var(--btn-primary);
+    color: white;
+}
+
+.program-entry button:hover {
+    background: var(--btn-primary-hover);
+    border-color: var(--btn-primary-hover);
+    color: white;
+}
+
+/* Same card treatment as the runtime/interaction panels */
+#running-program-wrapper,
+#stopped-program-wrapper {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+    margin-bottom: 14px;
+    box-shadow: var(--shadow-card);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+#running-program-wrapper {
+    background: linear-gradient(var(--tint-monitor), var(--tint-monitor)), var(--bg-panel);
+}
+
+#stopped-program-wrapper {
+    background: linear-gradient(var(--tint-detail), var(--tint-detail)), var(--bg-panel);
+}
+
+/* Table-like layout: handle | name | status | close button. The container
+   defines the column tracks and every entry joins them via subgrid, so the
+   columns align vertically across all entries in the card. The name column
+   is the 1fr track, taking all remaining width. */
+#running-program-display,
+#stopped-program-display {
+    margin-top: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--text-primary);
+    border-top: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: minmax(34px, max-content) minmax(0, 1fr) max-content max-content;
+}
+
+.running-program-entry {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: subgrid;
+    align-items: center;
+    column-gap: 12px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    transition: background 0.12s, opacity 0.2s;
+}
+
+.running-program-entry button {
+    margin-left: 0;
+}
+
+.running-program-handle {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--text-muted);
+}
+
+/* Placeholder while no handle exists yet (starting / failed to start) */
+.running-program-handle:empty::before {
+    content: "—";
+}
+
+.running-program-entry:last-child {
+    border-bottom: none;
+}
+
+.running-program-entry:hover {
+    background: var(--bg-row-hover);
+}
+
+.running-program-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow-wrap: anywhere; /* the minmax(0, 1fr) track lets long names wrap, not overflow */
+}
+
+.running-program-status {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--text-muted);
+}
+
+.program-running .running-program-status {
+    color: var(--status-ok);
+}
+
+.program-failed .running-program-status {
+    color: var(--status-err);
+}
+
+/* Killed programs go grey */
+.program-closed {
+    opacity: 0.55;
+}
+
+.program-closed .running-program-name {
+    color: var(--text-muted);
+}
+
+/* Only entries that got as far as a handle can be selected for the output
+   panel, so the pointer is hung off the attribute that carries it — a program
+   still starting, or one that never started, keeps the default cursor and
+   reads as un-clickable, which it is. */
+.running-program-entry[data-ref-handle] {
+    cursor: pointer;
+}
+
+/* The selected entry keeps full opacity even once it is stopped and greyed:
+   it is the one being read, so it should not be the faintest thing on screen.
+   The accent bar is drawn in the gap left of the handle column. */
+.program-selected {
+    background: var(--accent-light);
+    box-shadow: inset 3px 0 0 var(--accent);
+    opacity: 1;
+}
+
+.program-selected:hover {
+    background: var(--accent-light);
+}
+
+.program-selected .running-program-name {
+    color: var(--text-primary);
+}
+
+/* ===== Program output (device-manage tab) ===== */
+
+/* Same card treatment as the two program lists above it */
+#program-stdout-wrapper {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+    margin-bottom: 14px;
+    box-shadow: var(--shadow-card);
+    background: linear-gradient(var(--tint-interact), var(--tint-interact)), var(--bg-panel);
+}
+
+.program-stdout-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+/* Which program is being read. Pushes the refresh button to the far end. */
+#program-stdout-subject {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--text-muted);
+    overflow-wrap: anywhere;
+}
+
+/* Hidden until the selected program exits with the view already fetched. */
+#program-stdout-stale {
+    display: none;
+    flex: 0 0 auto;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: var(--accent-light);
+    border: 1px solid var(--accent-border);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: var(--accent-hover);
+}
+
+.stdout-stale #program-stdout-stale {
+    display: inline-block;
+}
+
+#program-stdout-meta {
+    margin-top: 8px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--text-muted);
+    min-height: 14px; /* holds its line so the output below doesn't jump on refresh */
+}
+
+/* Fixed height rather than growing with the output: this card sits under two
+   lists that the operator also needs to see, and the backend caps what it
+   hands over anyway, so the box scrolls instead of running away down the tab. */
+#program-stdout-display {
+    margin: 8px 0 0 0;
+    padding: 10px 12px;
+    height: 240px;
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-sidebar);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere; /* long unbroken output wraps rather than scrolling sideways */
+    user-select: text;
+}
+
+/* stderr picked out from stdout in the interleaved stream */
+.program-stdout-err {
+    color: var(--status-err);
+}
+
+.program-stdout-empty {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* ===== Code editor ===== */
+
+#script-display {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
+}
+
+.CodeMirror {
+    font-size: 14px;
+    font-family: var(--font-mono);
+    font-weight: 400;
+    border-radius: var(--radius);
+    line-height: 1.55;
+}
+
+/* ===== Application Menu (the dropdown under the app title) =====
+   Drawn in HTML rather than as a native OS menu, precisely so it can be
+   themed — see frontend/js/app-menu.js. Panels are position: fixed and
+   placed by that script; everything here is appearance only. */
+
+/* Catches the click that dismisses the menu. Transparent — unlike the
+   async-alert backdrop, a menu shouldn't dim what's behind it. It covers
+   the title bar too, so it must opt out of the window drag region or clicks
+   over that strip would drag the window instead of closing the menu. */
+.app-menu-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 900;
+    -webkit-app-region: no-drag;
+}
+
+.app-menu-panel {
+    position: fixed;
+    z-index: 901;
+    min-width: 200px;
+    /* The Theme submenu is long (one entry per palette), so a short window
+       or a zoomed-in one could otherwise push it past the bottom edge. */
+    max-height: calc(100vh - 8px);
+    overflow-y: auto;
+    padding: 6px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.04);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    user-select: none;
+    -webkit-app-region: no-drag;
+    /* Entry transition, matched to .async-alert-modal: the script adds
+       .visible one frame after insertion. */
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.app-menu-panel.visible {
+    opacity: 1;
+    transform: none;
+}
+
+.app-menu-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    /* Left padding leaves room for the radio dot on theme entries. */
+    padding: 7px 12px 7px 30px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.1s, color 0.1s;
+}
+
+.app-menu-item:hover:not(.disabled),
+.app-menu-item.open:not(.disabled) {
+    background: var(--accent-light);
+    color: var(--accent-hover);
+}
+
+.app-menu-item.disabled {
+    color: var(--text-muted);
+    cursor: default;
+}
+
+.app-menu-label {
+    flex: 1 1 auto;
+}
+
+.app-menu-accel {
+    flex: 0 0 auto;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    font-weight: 400;
+    color: var(--text-muted);
+}
+
+.app-menu-item:hover:not(.disabled) .app-menu-accel {
+    color: var(--accent-hover);
+}
+
+/* Submenu chevron, drawn with borders so it doesn't depend on a glyph. */
+.app-menu-arrow {
+    flex: 0 0 auto;
+    width: 0;
+    height: 0;
+    margin-right: -2px;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    border-left: 5px solid var(--text-muted);
+    transition: border-left-color 0.1s;
+}
+
+.app-menu-item:hover:not(.disabled) .app-menu-arrow,
+.app-menu-item.open:not(.disabled) .app-menu-arrow {
+    border-left-color: var(--accent-hover);
+}
+
+/* Radio marker for the theme entries */
+.app-menu-item.radio.checked::before {
+    content: "";
+    position: absolute;
+    left: 13px;
+    top: 50%;
+    width: 6px;
+    height: 6px;
+    margin-top: -3px;
+    border-radius: 50%;
+    background: var(--accent);
+}
+
+.app-menu-separator {
+    height: 1px;
+    margin: 5px 8px;
+    background: var(--border);
+}
+
+/* ===== Async Alert Modal ===== */
+
+/* Full-screen backdrop. Starts transparent; `.visible` (toggled one frame
+   after insertion) fades it in so we get an entry transition. */
+.async-alert-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(0, 0, 0, 0);
+    transition: background 0.2s ease;
+}
+
+.async-alert-overlay.visible {
+    background: rgba(0, 0, 0, 0.35);
+}
+
+.async-alert-modal {
+    min-width: 300px;
+    max-width: 460px;
+    background: var(--bg-panel);
+    border-radius: var(--radius);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05);
+    padding: 22px 24px 16px;
+    /* Entry: scale up + fade in (toggled with the overlay's .visible) */
+    transform: scale(0.92) translateY(8px);
+    opacity: 0;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.async-alert-overlay.visible .async-alert-modal {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+}
+
+.async-alert-message {
+    font-family: var(--font-sans);
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 1.5;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.async-alert-actions {
+    margin-top: 20px;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.async-alert-ok {
+    background: var(--btn-primary);
+    border-color: var(--btn-primary);
+    color: white;
+    margin-left: 0;
+    padding: 7px 22px;
+    font-weight: 600;
+}
+
+.async-alert-ok:hover {
+    background: var(--btn-primary-hover);
+    border-color: var(--btn-primary-hover);
+    color: white;
+}
+
+.async-alert-ok:focus {
+    box-shadow: var(--shadow-focus);
+}
+
+/* ═══════════════════════════════════════════════════════
+   Glassmorphism — activated when body has class "glass"
+   (Glass themes only)
+   ═══════════════════════════════════════════════════════ */
+
+/* Themed gradient blobs on body so backdrop-filter
+   has colour to diffuse through the frosted panels    */
+body.glass {
+    background:
+        radial-gradient(ellipse at 8% 35%,  var(--panel-tint-strong) 0%, transparent 55%),
+        radial-gradient(ellipse at 92% 20%, var(--panel-tint-strong) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 85%, var(--panel-tint)        0%, transparent 55%),
+        var(--bg-app);
+}
+
+/* -- Shared glass treatment for all card-like elements -- */
+.glass .panel-left,
+.glass .utility-panel-right,
+.glass .device-entry,
+.glass [id^="device"][id$="-detail"],
+.glass #script-actions,
+.glass #runtime-display-wrapper,
+.glass #interact-display-wrapper,
+.glass #running-program-wrapper,
+.glass #stopped-program-wrapper,
+.glass #program-stdout-wrapper,
+.glass #script-display {
+    backdrop-filter: blur(18px) saturate(1.6);
+    -webkit-backdrop-filter: blur(18px) saturate(1.6);
+    border-color: rgba(255, 255, 255, 0.30);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.35),
+        0 4px 24px rgba(0, 0, 0, 0.05);
+}
+
+/* Right panel becomes transparent so blobs show through */
+.glass .panel-right {
+    background: transparent;
+}
+
+/* -- Per-region glass backgrounds ----------------------
+   Each panel layers:
+     1. diagonal gloss shine   (top)
+     2. theme tint colour      (middle)
+     3. semi-transparent white  (base)                   */
+
+.glass .title-bar {
+    background:
+        linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.04) 100%),
+        linear-gradient(var(--tint-sidebar), var(--tint-sidebar)),
+        rgba(255, 255, 255, 0.42);
+    border-bottom-color: rgba(255, 255, 255, 0.22);
+    backdrop-filter: blur(18px) saturate(1.6);
+    -webkit-backdrop-filter: blur(18px) saturate(1.6);
+}
+
+.glass .panel-left {
+    background:
+        linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.02) 100%),
+        rgba(255, 255, 255, 0.32);
+    border-right-color: rgba(255, 255, 255, 0.18);
+}
+
+.glass .utility-panel-right {
+    background:
+        linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.02) 100%),
+        rgba(255, 255, 255, 0.32);
+    border-left-color: rgba(255, 255, 255, 0.18);
+}
+
+/* No .glass rules for the utility sub-panels on purpose: they are transparent
+   in every theme, so .glass .utility-panel-right's frosted surface is what
+   shows through. Frosting them as well would blur an already-blurred backdrop. */
+
+.glass .device-entry {
+    background:
+        linear-gradient(135deg, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.06) 50%),
+        linear-gradient(var(--tint-entry), var(--tint-entry)),
+        rgba(255, 255, 255, 0.48);
+}
+
+.glass .device-entry:hover {
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.45),
+        0 6px 28px rgba(0, 0, 0, 0.08),
+        0 0 0 1px var(--accent-border);
+}
+
+.glass .device-select-entry {
+    background:
+        linear-gradient(135deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.04) 50%),
+        linear-gradient(var(--accent-light), var(--accent-light)),
+        rgba(255, 255, 255, 0.48) !important;
+}
+
+.glass [id^="device"][id$="-detail"] {
+    background:
+        linear-gradient(135deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.05) 50%),
+        linear-gradient(var(--tint-detail), var(--tint-detail)),
+        rgba(255, 255, 255, 0.38);
+}
+
+.glass #script-actions {
+    background:
+        linear-gradient(135deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.05) 50%),
+        linear-gradient(var(--tint-actions), var(--tint-actions)),
+        rgba(255, 255, 255, 0.42);
+}
+
+.glass #runtime-display-wrapper {
+    background:
+        linear-gradient(135deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.05) 50%),
+        linear-gradient(var(--tint-monitor), var(--tint-monitor)),
+        rgba(255, 255, 255, 0.38);
+}
+
+.glass #interact-display-wrapper {
+    background:
+        linear-gradient(135deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.05) 50%),
+        linear-gradient(var(--tint-interact), var(--tint-interact)),
+        rgba(255, 255, 255, 0.38);
+}
+
+.glass #running-program-wrapper {
+    background:
+        linear-gradient(135deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.05) 50%),
+        linear-gradient(var(--tint-monitor), var(--tint-monitor)),
+        rgba(255, 255, 255, 0.38);
+}
+
+.glass #stopped-program-wrapper {
+    background:
+        linear-gradient(135deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.05) 50%),
+        linear-gradient(var(--tint-detail), var(--tint-detail)),
+        rgba(255, 255, 255, 0.38);
+}
+
+.glass #program-stdout-wrapper {
+    background:
+        linear-gradient(135deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.05) 50%),
+        linear-gradient(var(--tint-interact), var(--tint-interact)),
+        rgba(255, 255, 255, 0.38);
+}
+
+/* The output box itself stays a solid, readable surface — blurring the panel
+   behind a wall of monospace text makes it much harder to read. */
+.glass #program-stdout-display {
+    background: rgba(255, 255, 255, 0.55);
+    border-color: rgba(255, 255, 255, 0.45);
+}
+
+/* -- Glossy primary button ----------------------------- */
+.glass #activate-script,
+.glass .program-entry button {
+    background:
+        linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0) 55%),
+        linear-gradient(var(--btn-primary), var(--btn-primary));
+    border-color: rgba(255, 255, 255, 0.22);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.30),
+        0 3px 14px rgba(0, 0, 0, 0.18);
+}
+
+.glass #activate-script:hover,
+.glass .program-entry button:hover {
+    background:
+        linear-gradient(180deg, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0) 55%),
+        linear-gradient(var(--btn-primary-hover), var(--btn-primary-hover));
+}
+
+/* -- Glass form controls ------------------------------- */
+.glass input[type="text"] {
+    background: rgba(255, 255, 255, 0.42);
+    border-color: rgba(255, 255, 255, 0.30);
+}
+
+.glass input[type="submit"],
+.glass button {
+    background: rgba(255, 255, 255, 0.42);
+    border-color: rgba(255, 255, 255, 0.30);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.25);
+}
+
+.glass input[type="submit"]:hover,
+.glass button:hover {
+    background:
+        linear-gradient(135deg, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0) 50%),
+        var(--accent-light);
+    border-color: var(--accent-border);
+}
+
+/* -- Glass toggle switch ------------------------------- */
+.glass .slider {
+    background: rgba(255, 255, 255, 0.28);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+/* -- Glass code editor --------------------------------- */
+.glass #script-display {
+    border-color: rgba(255, 255, 255, 0.30);
+}
+
+/* -- Glass horizontal splitter & log panel ------------ */
+.glass .splitter-horizontal::before {
+    background: rgba(255, 255, 255, 0.25);
+}
+
+.glass .splitter-horizontal:hover::before {
+    background: var(--accent-border);
+}
+
+/* Frosting only — the border, radius and shadow went with the card. */
+.glass .panel-right-bottom {
+    background:
+        linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.02) 100%),
+        rgba(255, 255, 255, 0.28);
+    backdrop-filter: blur(18px) saturate(1.6);
+    -webkit-backdrop-filter: blur(18px) saturate(1.6);
+}
+
+.glass .log-header {
+    background: rgba(255, 255, 255, 0.12);
+    border-bottom-color: rgba(255, 255, 255, 0.20);
+}
+
+.glass .log-line:nth-child(even) {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.glass .log-line:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.glass .CodeMirror {
+    background: rgba(255, 255, 255, 0.45) !important;
+}
+
+/* -- Glass activated-script badge ---------------------- */
+.glass #activated-script-name {
+    background: rgba(255, 255, 255, 0.32);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-color: rgba(255, 255, 255, 0.30);
+}
+
+/* -- Glass application menu ---------------------------- */
+.glass .app-menu-panel {
+    background:
+        linear-gradient(135deg, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.06) 50%),
+        rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(22px) saturate(1.6);
+    -webkit-backdrop-filter: blur(22px) saturate(1.6);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.40),
+        0 10px 40px rgba(0, 0, 0, 0.22);
+}
+
+.glass .app-menu-separator {
+    background: rgba(255, 255, 255, 0.35);
+}
+
+.glass .app-menu-item:hover:not(.disabled),
+.glass .app-menu-item.open:not(.disabled) {
+    background:
+        linear-gradient(135deg, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0) 50%),
+        var(--accent-light);
+}
+
+/* -- Glass async alert modal --------------------------- */
+.glass .async-alert-modal {
+    background:
+        linear-gradient(135deg, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.06) 50%),
+        rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(22px) saturate(1.6);
+    -webkit-backdrop-filter: blur(22px) saturate(1.6);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.40),
+        0 10px 40px rgba(0, 0, 0, 0.22);
+}
+
+.glass .async-alert-ok {
+    background:
+        linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0) 55%),
+        linear-gradient(var(--btn-primary), var(--btn-primary));
+    border-color: rgba(255, 255, 255, 0.22);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.30),
+        0 3px 14px rgba(0, 0, 0, 0.18);
+}
+
+.glass .async-alert-ok:hover {
+    background:
+        linear-gradient(180deg, rgba(255,255,255,0.30) 0%, rgba(255,255,255,0) 55%),
+        linear-gradient(var(--btn-primary-hover), var(--btn-primary-hover));
+}
+
+/* ===== Collapsible panels (see frontend/js/panel-collapse.js) =====
+
+   Deliberately the last section in this file. The themed `.glass` rules above
+   reach these same elements at equal specificity, so keeping the collapsed
+   state last is what lets it win without !important. That mattered acutely
+   while the log panel was a card and `.glass .panel-right-bottom` re-declared
+   its border; it is now only insurance against the next themed rule that
+   touches one of these properties.
+
+   Collapsing zeroes the whole box, not just the size: with border-box sizing,
+   .panel-left's 20px of padding plus its 1px border would otherwise leave a
+   21px stub behind. The log panel has no box of its own left to zero since it
+   stopped being a card, so its height alone now does the job. */
+
+/* -- Shared toggle button ------------------------------ */
+
+/* Both buttons live inside their splitter, which is only 10px thick, so each
+   one is anchored to the edge it can safely overhang: the vertical button
+   grows rightwards (crossing the splitter's left edge would put it outside
+   .panel-container, which clips) and the horizontal one grows upwards (below
+   it is the window edge once the log is shut). */
+.panel-toggle {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    margin: 0;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    z-index: 5;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.panel-toggle:hover {
+    background: var(--accent-light);
+    border-color: var(--accent-border);
+    color: var(--accent);
+}
+
+.panel-toggle:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus);
+}
+
+/* Chevron, drawn as two borders on a rotated square so the button carries no
+   icon-font dependency and can spin to face the other way on collapse. */
+.panel-toggle::before {
+    content: "";
+    width: 5px;
+    height: 5px;
+    border-left: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transition: transform 0.18s ease;
+}
+
+/* Vertical splitters: the button sits above the hover pill (.splitter::after,
+   centred at 50%) so the two never overlap, and each variant overhangs towards
+   the panel it controls — never past the outer edge, which .main-area and
+   .panel-container both clip. */
+.panel-toggle-v,
+.panel-toggle-v-right {
+    top: 14px;
+    width: 16px;
+    height: 26px;
+}
+
+.panel-toggle-v       { left: 0;  }
+.panel-toggle-v-right { right: 0; }
+
+.panel-toggle-v::before              { transform: rotate(45deg);  }   /* points left */
+.panel-toggle-v.is-collapsed::before { transform: rotate(225deg); }
+
+/* Mirrored: this panel hides to the right, so the chevron points that way. */
+.panel-toggle-v-right::before              { transform: rotate(225deg); }
+.panel-toggle-v-right.is-collapsed::before { transform: rotate(45deg);  }
+
+/* Horizontal splitter: right-aligned with the log card's 16px margin, and
+   bottom-anchored so it overhangs upwards into .tab-area only. */
+.panel-toggle-h {
+    right: 16px;
+    bottom: 0;
+    width: 26px;
+    height: 16px;
+}
+
+.panel-toggle-h::before        { transform: rotate(-45deg); }   /* points down */
+.panel-toggle-h.is-collapsed::before { transform: rotate(135deg); }
+
+.glass .panel-toggle {
+    background: rgba(255, 255, 255, 0.45);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-color: rgba(255, 255, 255, 0.35);
+}
+
+/* -- Left panel ---------------------------------------- */
+
+.panel-left {
+    transition: width 0.18s ease, padding 0.18s ease;
+}
+
+.panel-left.collapsed {
+    width: 0;
+    min-width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    border-right-width: 0;
+    overflow: hidden;
+}
+
+/* -- Utility panel ------------------------------------- */
+
+/* Same treatment as .panel-left, mirrored: its border is on the left. */
+.utility-panel-right {
+    transition: width 0.18s ease, padding 0.18s ease;
+}
+
+.utility-panel-right.collapsed {
+    width: 0;
+    min-width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    border-left-width: 0;
+    overflow: hidden;
+}
+
+/* -- Log panel ----------------------------------------- */
+
+.panel-right-bottom {
+    transition: height 0.18s ease;
+}
+
+/* Height is the only thing to animate now — the margin and border this used to
+   zero went away with the card. */
+.panel-right-bottom.collapsed {
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* The log is normally the flex item that soaks up leftover height while
+   .tab-area holds the height the splitter drag wrote. Collapsing has to swap
+   those roles — the log's height becomes JS-driven (inline px, so it can be
+   animated) and .tab-area becomes the one that absorbs. This class marks that
+   swap; it stays on for the whole collapse, and through the re-opening
+   animation, so the two panels always move in lockstep. */
+.main-area-body.log-sizing .tab-area {
+    flex: 1 1 auto;
+}
+
+.main-area-body.log-sizing .panel-right-bottom {
+    flex: 0 0 auto;
+}
+
+/* jquery-resizable suspends the transition on the element it drags, but the
+   log panel is never that element — .tab-area is — so its own animation has
+   to be called off by hand for the duration of a drag. */
+.main-area-body.log-dragging .panel-right-bottom {
+    transition: none;
+}
